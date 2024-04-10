@@ -4,6 +4,12 @@
         <TargetFramework>net8.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
+        <PackageId>SeleniumGenius</PackageId>
+        <Version>1.0.1</Version>
+        <RepositoryUrl>https://github.com/hasanxdev/SeleniumGenius</RepositoryUrl>
+        <RepositoryType>git</RepositoryType>
+        <Authors>Hassan Arab Borzo</Authors>
+        <Description>SeleniumGenius is an expert tool for working with Selenium, providing access to the core Selenium settings along</Description>
     </PropertyGroup>
 
     <ItemGroup>

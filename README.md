@@ -21,11 +21,17 @@ All of these features are abstracted behind a single method called `CreateAsync`
 _ = await seleniumGeniusFactory.CreateAsync(cancellationToken);
 ```
 
-## Installation and Setup:
+## Installation and Setup: [![Nuget](https://img.shields.io/nuget/v/SeleniumGenius)](https://www.nuget.org/packages/SeleniumGenius/)
 
-Install via:
+#### Via PMC (Package manager console): 
 
+```
+PM> Install-Package SeleniumGenius
+```
+#### Via dotnet CLI
+```
 dotnet add package SeleniumGenius
+```
 
 Then add the following settings to your services:
 
