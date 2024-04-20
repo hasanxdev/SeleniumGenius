@@ -1,4 +1,5 @@
-﻿using System.Collections.ObjectModel;
+﻿using System.Collections.Concurrent;
+using System.Collections.ObjectModel;
 using System.Text.Json;
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
@@ -16,15 +17,16 @@ public class SeleniumGeniusFactory(
     ILogger<SeleniumGeniusFactory> logger,
     IHttpClientFactory httpClientFactoryFactory) : IDisposable, IAsyncDisposable
 {
-    private static readonly Dictionary<int, GeniusCreateResult> DriversDictionary = new();
+    private static readonly ConcurrentDictionary<int, GeniusCreateResult> DriversDictionary = new();
+    private static SemaphoreSlim _semaphoreSlim = new(1, 1);
     private int _currentPort = -1;
-    
+
     public async Task<GeniusCreateResult> CreateAsync(CancellationToken cancellationToken)
     {
-        logger.LogInformation("wait for available port");
+        logger.LogTrace("wait for available port");
         _currentPort = await seleniumGeniusOptions.AvailablePorts.Reader.ReadAsync(cancellationToken);
-        logger.LogInformation("get success get port " + _currentPort);
-        
+        logger.LogTrace("get success get port " + _currentPort);
+
         if (DriversDictionary.TryGetValue(_currentPort, out var result))
         {
             return result;
@@ -43,11 +45,11 @@ public class SeleniumGeniusFactory(
                 }
             }
 
-            return StartDriver(_currentPort);
+            return await StartDriver(_currentPort, cancellationToken);
         }, cancellationToken);
     }
 
-    private GeniusCreateResult StartDriver(int port)
+    private async Task<GeniusCreateResult> StartDriver(int port, CancellationToken cancellationToken)
     {
         var service = ChromeDriverService.CreateDefaultService(chromeDriverService.DriverServicePath,
             chromeDriverService.DriverServiceExecutableName);
@@ -95,9 +97,20 @@ public class SeleniumGeniusFactory(
             options.AddArguments("user-data-dir=" + GenerateUserDataDir(port));
         }
 
-        var driver = new GeniusDriver(service, options, TimeSpan.FromMinutes(10));
-        driver.Manage().Timeouts().ImplicitWait = TimeSpan.FromSeconds(5);
+        await _semaphoreSlim.WaitAsync(cancellationToken);
+        GeniusDriver driver;
         
+        try
+        {
+            driver = new(service, options, TimeSpan.FromMinutes(10));
+        }
+        finally
+        {
+            _semaphoreSlim.Release();
+        }
+
+        driver.Manage().Timeouts().ImplicitWait = TimeSpan.FromSeconds(5);
+
         var loginResult = seleniumGeniusOptions.Login?.Invoke(new LoginRequest()
         {
             Driver = driver.Browser,
@@ -112,7 +125,7 @@ public class SeleniumGeniusFactory(
             Driver = driver
         };
 
-        DriversDictionary.Add(port, result);
+        DriversDictionary.TryAdd(port, result);
 
         return result;
     }
