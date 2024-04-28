@@ -1,12 +1,7 @@
 ﻿using System.Collections.Concurrent;
-using System.Collections.ObjectModel;
-using System.Text.Json;
-using System.Threading.Channels;
+using System.Diagnostics;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.ObjectPool;
 using OpenQA.Selenium.Chrome;
-using OpenQA.Selenium.Internal;
-using SeleniumGenius.Exceptions;
 using SeleniumGenius.Models;
 
 namespace SeleniumGenius;
@@ -17,35 +12,37 @@ public class SeleniumGeniusFactory(
     ILogger<SeleniumGeniusFactory> logger,
     IHttpClientFactory httpClientFactoryFactory) : IDisposable, IAsyncDisposable
 {
+    private bool _isDisposed;
+    private readonly ThreadLocal<int> _currentPorts = new(() => -1, true);
     private static readonly ConcurrentDictionary<int, GeniusCreateResult> DriversDictionary = new();
-    private static SemaphoreSlim _semaphoreSlim = new(1, 1);
-    private int _currentPort = -1;
+    private static SemaphoreSlim SemaphoreSlim = new(1, 1);
 
     public async Task<GeniusCreateResult> CreateAsync(CancellationToken cancellationToken)
     {
         logger.LogTrace("wait for available port");
-        _currentPort = await seleniumGeniusOptions.AvailablePorts.Reader.ReadAsync(cancellationToken);
-        logger.LogTrace("get success get port " + _currentPort);
+        var currentPort = await seleniumGeniusOptions.AvailablePorts.Reader.ReadAsync(cancellationToken);
+        _currentPorts.Value = currentPort;
+        logger.LogTrace("get success get port " + currentPort);
 
-        if (DriversDictionary.TryGetValue(_currentPort, out var result))
+        if (DriversDictionary.TryGetValue(currentPort, out var result))
         {
             return result;
         }
 
         return await Task.Run(async () =>
         {
-            await ShutdownChromeDriver(_currentPort);
+            await ShutdownChromeDriver(currentPort);
 
             if (seleniumGeniusOptions.ClearCacheAfterDispose)
             {
-                var userDataDir = GenerateUserDataDir(_currentPort);
+                var userDataDir = GenerateUserDataDir(currentPort);
                 if (Directory.Exists(userDataDir))
                 {
                     Directory.Delete(userDataDir, true);
                 }
             }
 
-            return await StartDriver(_currentPort, cancellationToken);
+            return await StartDriver(currentPort, cancellationToken);
         }, cancellationToken);
     }
 
@@ -91,22 +88,23 @@ public class SeleniumGeniusFactory(
         };
         options.AddArguments(seleniumGeniusOptions.Arguments);
         options.AddExtensions(seleniumGeniusOptions.Extensions);
-
+        options.AddArgument($"--scriptpid-{Process.GetCurrentProcess().Id}");
+        
         if (seleniumGeniusOptions.UserDataDir is not null)
         {
             options.AddArguments("user-data-dir=" + GenerateUserDataDir(port));
         }
 
-        await _semaphoreSlim.WaitAsync(cancellationToken);
         GeniusDriver driver;
         
         try
         {
+            await SemaphoreSlim.WaitAsync(cancellationToken);
             driver = new(service, options, TimeSpan.FromMinutes(10));
         }
         finally
         {
-            _semaphoreSlim.Release();
+            SemaphoreSlim.Release();
         }
 
         driver.Manage().Timeouts().ImplicitWait = TimeSpan.FromSeconds(5);
@@ -115,7 +113,7 @@ public class SeleniumGeniusFactory(
         {
             Driver = driver.Browser,
             LoginData = seleniumGeniusOptions.LoginDataList[
-                Math.Abs((SeleniumGeniusOptions.StaticPort - _currentPort) % seleniumGeniusOptions.LoginDataList.Count)]
+                Math.Abs((SeleniumGeniusOptions.StaticPort - port) % seleniumGeniusOptions.LoginDataList.Count)]
         });
 
         var result = new GeniusCreateResult()
@@ -148,7 +146,6 @@ public class SeleniumGeniusFactory(
         }
     }
 
-
     public void Dispose()
     {
         DisposeAsync().GetAwaiter().GetResult();
@@ -156,18 +153,24 @@ public class SeleniumGeniusFactory(
 
     public async ValueTask DisposeAsync()
     {
-        if (_currentPort != -1)
+        if (DriversDictionary.Any() is false || _isDisposed)
+        {
+            return;
+        }
+
+        _isDisposed = true;
+        var threadPorts = _currentPorts.Values.Where(p => p > -1);
+        var portDriverPairList = DriversDictionary
+            .Where(p => threadPorts.Contains(p.Key));
+        foreach (var portDriverPair in portDriverPairList)
         {
             if (seleniumGeniusOptions.DisposeDriverByDi)
             {
-                if (DriversDictionary.Remove(_currentPort, out var geniusCreateResult))
-                {
-                    geniusCreateResult.Driver.Dispose();
-                }
+                portDriverPair.Value.Driver.Dispose();
 
                 if (seleniumGeniusOptions.ClearCacheAfterDispose)
                 {
-                    var userDataDir = GenerateUserDataDir(_currentPort);
+                    var userDataDir = GenerateUserDataDir(portDriverPair.Key);
                     if (Directory.Exists(userDataDir))
                     {
                         Directory.Delete(userDataDir, true);
@@ -175,7 +178,7 @@ public class SeleniumGeniusFactory(
                 }
             }
 
-            await seleniumGeniusOptions.AvailablePorts.Writer.WriteAsync(_currentPort);
+            await seleniumGeniusOptions.AvailablePorts.Writer.WriteAsync(portDriverPair.Key);
         }
     }
 }

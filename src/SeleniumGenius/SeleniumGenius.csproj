@@ -5,7 +5,7 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <PackageId>SeleniumGenius</PackageId>
-        <Version>1.0.4</Version>
+        <Version>1.0.9</Version>
         <RepositoryUrl>https://github.com/hasanxdev/SeleniumGenius</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <Authors>Hassan Arab Borzo</Authors>
@@ -19,7 +19,7 @@
     <ItemGroup>
         <PackageReference Include="Selenium.WebDriver" Version="4.17.0" />
         <PackageReference Include="Selenium.WebDriver.ChromeDriver" Version="121.0.6167.8500" />
-        <PackageReference Include="Telegram.Bot" Version="18.0.0-alpha.1" />
+        <PackageReference Include="System.Management" Version="8.0.0" />
     </ItemGroup>
     
 </Project>

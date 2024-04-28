@@ -68,7 +68,6 @@ public class GeniusDriver : IWebDriver, ITakesScreenshot, IJavaScriptExecutor
 
     public void Dispose()
     {
-        _service.Dispose();
         Browser.Dispose();
     }
 

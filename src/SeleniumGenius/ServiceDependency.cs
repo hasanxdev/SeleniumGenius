@@ -2,14 +2,28 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using OpenQA.Selenium.Chrome;
+using SeleniumGenius.HostedServices;
+using SeleniumGenius.Services;
 
 namespace SeleniumGenius;
 
 public static class SeleniumGeniusServiceDependency
 {
+    /// <summary>
+    /// this method terminate all running chrome drivers before application runned, then added SeleniumGenius
+    /// </summary>
+    public static void AddSeleniumGeniusWithPreTermination(this WebApplicationBuilder builder, Action<SeleniumGeniusOptions> options,
+        Action<ChromeDriverService> service)
+    {
+        GeniusDriverTermination.Terminate();
+        AddSeleniumGenius(builder, options, service);
+    }
+    
     public static void AddSeleniumGenius(this WebApplicationBuilder builder, Action<SeleniumGeniusOptions> options,
         Action<ChromeDriverService> service)
     {
+        builder.Services.AddHostedService<StopGeniusDriversHostedService>();
+
         var chromeDriverOptions = new SeleniumGeniusOptions();
         options.Invoke(chromeDriverOptions);
 
