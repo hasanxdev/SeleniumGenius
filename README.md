@@ -86,3 +86,5 @@ Various sample settings are provided below, and we'll delve into each setting in
 # Errors:❗
 1. `UnhandledGeniusException`: This class helps you throw exceptions with a screenshot of the moment the error occurred.
 
+# Don't forget to give me a star ⭐
+
